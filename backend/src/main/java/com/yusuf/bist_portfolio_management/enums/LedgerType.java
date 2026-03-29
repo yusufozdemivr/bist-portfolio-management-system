@@ -1,0 +1,9 @@
+package com.yusuf.bist_portfolio_management.enums;
+
+public enum LedgerType {
+    DEPOSIT,
+    WITHDRAWAL,
+    BUY_EXEC,
+    SELL_EXEC,
+    COMMISION
+}
