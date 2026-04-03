@@ -5,5 +5,5 @@ public enum LedgerType {
     WITHDRAWAL,
     BUY_EXEC,
     SELL_EXEC,
-    COMMISION
+    COMMISSION
 }
