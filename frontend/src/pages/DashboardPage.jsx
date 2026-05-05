@@ -1,21 +1,85 @@
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { fetchAllStocks } from '../api/stockApi';
 
 export default function DashboardPage() {
-    const { username, logout } = useAuth();
+    const { username, token, logout } = useAuth();
     const navigate = useNavigate();
+
+    const [stocks, setStocks] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadStocks() {
+            try {
+                setLoading(true);
+                setError(null);
+                const data = await fetchAllStocks(token);
+                if (!cancelled) {
+                    setStocks(data);
+                }
+            } catch (err) {
+                if (!cancelled) {
+                    setError(err.message);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
+            }
+        }
+
+        loadStocks();
+        return () => { cancelled = true; };
+    }, [token]);
+
+    const filteredStocks = useMemo(() => {
+        if (!searchTerm.trim()) return stocks;
+        const term = searchTerm.toLowerCase();
+        return stocks.filter(
+            (s) =>
+                s.symbol.toLowerCase().includes(term) ||
+                s.companyName.toLowerCase().includes(term) ||
+                (s.sector && s.sector.toLowerCase().includes(term))
+        );
+    }, [stocks, searchTerm]);
 
     const handleLogout = () => {
         logout();
         navigate('/login');
     };
 
-    const stats = [
-        { label: 'Portfolio Value', value: '₺0.00', sub: 'No positions yet' },
-        { label: 'Account Balance', value: '₺100,000.00', sub: 'Available cash' },
-        { label: 'Open Orders', value: '0', sub: 'No pending orders' },
-        { label: 'Total P&L', value: '₺0.00', sub: '0.00%' },
-    ];
+    const formatPrice = (price) => {
+        if (price == null) return '—';
+        return `₺${Number(price).toLocaleString('tr-TR', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        })}`;
+    };
+
+    const formatVolume = (volume) => {
+        if (volume == null) return '—';
+        if (volume >= 1_000_000) {
+            return `${(volume / 1_000_000).toFixed(1)}M`;
+        }
+        if (volume >= 1_000) {
+            return `${(volume / 1_000).toFixed(1)}K`;
+        }
+        return volume.toLocaleString('tr-TR');
+    };
+
+    const formatChange = (change) => {
+        if (change == null) return { text: '—', color: '#6b7280' };
+        const num = Number(change);
+        const sign = num > 0 ? '+' : '';
+        const color = num > 0 ? '#16a34a' : num < 0 ? '#dc2626' : '#6b7280';
+        return { text: `${sign}${num.toFixed(2)}%`, color };
+    };
 
     return (
         <div style={styles.container}>
@@ -42,34 +106,89 @@ export default function DashboardPage() {
             <main style={styles.main}>
                 <section style={styles.hero}>
                     <h1 style={styles.heroTitle}>Welcome back, {username}</h1>
-                    <p style={styles.heroSub}>Your portfolio overview at a glance</p>
+                    <p style={styles.heroSub}>BIST100 live stock prices</p>
                 </section>
 
-                <div style={styles.grid}>
-                    {stats.map((s) => (
-                        <div style={styles.card} key={s.label}>
-                            <span style={styles.cardLabel}>{s.label}</span>
-                            <span style={styles.cardValue}>{s.value}</span>
-                            <span style={styles.cardSub}>{s.sub}</span>
-                        </div>
-                    ))}
+                <div style={styles.searchContainer}>
+                    <input
+                        type="text"
+                        placeholder="Search by symbol, company or sector..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        style={styles.searchInput}
+                        aria-label="Search stocks"
+                    />
                 </div>
 
-                <div style={styles.emptyState}>
-                    <div style={styles.emptyIcon}>
-                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-                            <rect x="4" y="20" width="8" height="24" rx="2" fill="#e5e7eb"/>
-                            <rect x="16" y="12" width="8" height="32" rx="2" fill="#d1d5db"/>
-                            <rect x="28" y="16" width="8" height="28" rx="2" fill="#e5e7eb"/>
-                            <rect x="40" y="8" width="4" height="36" rx="2" fill="#d1d5db"/>
-                        </svg>
+                {loading && (
+                    <div style={styles.statusBox}>
+                        <p style={styles.statusText}>Loading stocks...</p>
                     </div>
-                    <h2 style={styles.emptyTitle}>Market data and trading coming soon</h2>
-                    <p style={styles.emptyText}>
-                        Live BIST100 prices, order management, and portfolio analytics
-                        will appear here in the next update.
-                    </p>
-                </div>
+                )}
+
+                {error && (
+                    <div style={styles.errorBox}>
+                        <p style={styles.errorText}>{error}</p>
+                    </div>
+                )}
+
+                {!loading && !error && (
+                    <div style={styles.tableWrapper}>
+                        <table style={styles.table}>
+                            <thead>
+                                <tr>
+                                    <th style={styles.th}>Symbol</th>
+                                    <th style={styles.th}>Company</th>
+                                    <th style={styles.th}>Sector</th>
+                                    <th style={{ ...styles.th, textAlign: 'right' }}>Price</th>
+                                    <th style={{ ...styles.th, textAlign: 'right' }}>Change</th>
+                                    <th style={{ ...styles.th, textAlign: 'right' }}>High</th>
+                                    <th style={{ ...styles.th, textAlign: 'right' }}>Low</th>
+                                    <th style={{ ...styles.th, textAlign: 'right' }}>Volume</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredStocks.map((stock) => {
+                                    const change = formatChange(stock.changePercentage);
+                                    return (
+                                        <tr key={stock.symbol} style={styles.tr}>
+                                            <td style={styles.tdSymbol}>{stock.symbol}</td>
+                                            <td style={styles.td}>{stock.companyName}</td>
+                                            <td style={styles.tdSector}>{stock.sector || '—'}</td>
+                                            <td style={{ ...styles.td, textAlign: 'right', fontWeight: '600' }}>
+                                                {formatPrice(stock.lastPrice)}
+                                            </td>
+                                            <td style={{
+                                                ...styles.td,
+                                                textAlign: 'right',
+                                                color: change.color,
+                                                fontWeight: '600',
+                                            }}>
+                                                {change.text}
+                                            </td>
+                                            <td style={{ ...styles.td, textAlign: 'right' }}>
+                                                {formatPrice(stock.dayHigh)}
+                                            </td>
+                                            <td style={{ ...styles.td, textAlign: 'right' }}>
+                                                {formatPrice(stock.dayLow)}
+                                            </td>
+                                            <td style={{ ...styles.td, textAlign: 'right' }}>
+                                                {formatVolume(stock.volume)}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {filteredStocks.length === 0 && (
+                                    <tr>
+                                        <td colSpan="8" style={styles.emptyRow}>
+                                            No stocks found matching "{searchTerm}"
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
             </main>
         </div>
     );
@@ -146,12 +265,12 @@ const styles = {
         fontWeight: '500',
     },
     main: {
-        maxWidth: '1060px',
+        maxWidth: '1200px',
         margin: '0 auto',
         padding: '32px 28px',
     },
     hero: {
-        marginBottom: '28px',
+        marginBottom: '24px',
     },
     heroTitle: {
         fontSize: '24px',
@@ -163,60 +282,89 @@ const styles = {
         fontSize: '14px',
         color: '#6b7280',
     },
-    grid: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: '16px',
-        marginBottom: '32px',
+    searchContainer: {
+        marginBottom: '20px',
     },
-    card: {
+    searchInput: {
+        width: '100%',
+        maxWidth: '400px',
+        padding: '10px 16px',
+        fontSize: '14px',
+        border: '1px solid #d1d5db',
+        borderRadius: '8px',
+        outline: 'none',
+        backgroundColor: '#ffffff',
+        boxSizing: 'border-box',
+    },
+    statusBox: {
         backgroundColor: '#ffffff',
         borderRadius: '10px',
-        padding: '22px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '4px',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
-        border: '1px solid #f0f0f0',
-    },
-    cardLabel: {
-        fontSize: '12px',
-        fontWeight: '600',
-        color: '#6b7280',
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
-    },
-    cardValue: {
-        fontSize: '22px',
-        fontWeight: '700',
-        color: '#111827',
-        marginTop: '4px',
-    },
-    cardSub: {
-        fontSize: '12px',
-        color: '#9ca3af',
-    },
-    emptyState: {
-        backgroundColor: '#ffffff',
-        borderRadius: '10px',
-        padding: '56px 32px',
+        padding: '48px 32px',
         textAlign: 'center',
         border: '1px solid #f0f0f0',
     },
-    emptyIcon: {
-        marginBottom: '20px',
+    statusText: {
+        fontSize: '15px',
+        color: '#6b7280',
     },
-    emptyTitle: {
-        fontSize: '17px',
-        fontWeight: '600',
-        color: '#374151',
-        marginBottom: '8px',
+    errorBox: {
+        backgroundColor: '#fef2f2',
+        borderRadius: '10px',
+        padding: '16px 24px',
+        border: '1px solid #fecaca',
     },
-    emptyText: {
+    errorText: {
         fontSize: '14px',
+        color: '#dc2626',
+    },
+    tableWrapper: {
+        backgroundColor: '#ffffff',
+        borderRadius: '10px',
+        border: '1px solid #f0f0f0',
+        overflow: 'hidden',
+        overflowX: 'auto',
+    },
+    table: {
+        width: '100%',
+        borderCollapse: 'collapse',
+        fontSize: '13px',
+    },
+    th: {
+        padding: '12px 16px',
+        textAlign: 'left',
+        fontWeight: '600',
+        fontSize: '11px',
+        color: '#6b7280',
+        textTransform: 'uppercase',
+        letterSpacing: '0.5px',
+        borderBottom: '1px solid #f0f0f0',
+        backgroundColor: '#fafafa',
+        whiteSpace: 'nowrap',
+    },
+    tr: {
+        borderBottom: '1px solid #f5f5f5',
+    },
+    td: {
+        padding: '10px 16px',
+        color: '#374151',
+        whiteSpace: 'nowrap',
+    },
+    tdSymbol: {
+        padding: '10px 16px',
+        color: '#111827',
+        fontWeight: '700',
+        whiteSpace: 'nowrap',
+    },
+    tdSector: {
+        padding: '10px 16px',
         color: '#9ca3af',
-        maxWidth: '420px',
-        margin: '0 auto',
-        lineHeight: '1.6',
+        fontSize: '12px',
+        whiteSpace: 'nowrap',
+    },
+    emptyRow: {
+        padding: '32px 16px',
+        textAlign: 'center',
+        color: '#9ca3af',
+        fontSize: '14px',
     },
 };

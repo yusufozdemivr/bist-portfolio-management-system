@@ -6,6 +6,11 @@ import com.yusuf.bist_portfolio_management.entity.Stock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Primary;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
@@ -13,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Component
+@Primary
 @RequiredArgsConstructor
 @Slf4j
 public class BigParaProvider implements StockDataProvider {
@@ -29,12 +35,24 @@ public class BigParaProvider implements StockDataProvider {
     public List<StockPriceData> fetchPrices(List<Stock> stocks) {
         List<StockPriceData> results = new ArrayList<>();
 
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                        + "AppleWebKit/537.36 (KHTML, like Gecko) "
+                        + "Chrome/120.0.0.0 Safari/537.36");
+        headers.set("Referer",
+                "https://bigpara.hurriyet.com.tr");
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+
         for (Stock stock : stocks) {
             try {
                 String url = baseUrl + "/" + stock.getSymbol();
 
-                BigParaResponse response = restTemplate
-                        .getForObject(url, BigParaResponse.class);
+                ResponseEntity<BigParaResponse> responseEntity =
+                        restTemplate.exchange(url, HttpMethod.GET,
+                                entity, BigParaResponse.class);
+
+                BigParaResponse response = responseEntity.getBody();
 
                 if (response == null
                         || !"0".equals(response.getCode())

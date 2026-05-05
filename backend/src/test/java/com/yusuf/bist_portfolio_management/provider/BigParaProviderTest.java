@@ -9,6 +9,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
 
@@ -17,8 +21,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -55,9 +58,9 @@ class BigParaProviderTest {
                 new BigDecimal("42.66"), new BigDecimal("0.38"),
                 35252373L, new BigDecimal("1661556101.0"));
 
-        when(restTemplate.getForObject(anyString(),
-                eq(BigParaResponse.class)))
-                .thenReturn(response);
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET),
+                any(HttpEntity.class), eq(BigParaResponse.class)))
+                .thenReturn(new ResponseEntity<>(response, HttpStatus.OK));
 
         List<StockPriceData> result = bigParaProvider
                 .fetchPrices(List.of(stock));
@@ -90,9 +93,9 @@ class BigParaProviderTest {
         BigParaResponse response = new BigParaResponse();
         response.setCode("1");
 
-        when(restTemplate.getForObject(anyString(),
-                eq(BigParaResponse.class)))
-                .thenReturn(response);
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET),
+                any(HttpEntity.class), eq(BigParaResponse.class)))
+                .thenReturn(new ResponseEntity<>(response, HttpStatus.OK));
 
         List<StockPriceData> result = bigParaProvider
                 .fetchPrices(List.of(stock));
@@ -123,15 +126,18 @@ class BigParaProviderTest {
                 new BigDecimal("42.66"), new BigDecimal("0.38"),
                 35252373L, new BigDecimal("1661556101.0"));
 
-        when(restTemplate.getForObject(
+        when(restTemplate.exchange(
                 eq("https://bigpara.hurriyet.com.tr/api/v1/borsa/hisseyuzeysel/FAIL"),
+                eq(HttpMethod.GET), any(HttpEntity.class),
                 eq(BigParaResponse.class)))
                 .thenThrow(new RuntimeException("403 Forbidden"));
 
-        when(restTemplate.getForObject(
+        when(restTemplate.exchange(
                 eq("https://bigpara.hurriyet.com.tr/api/v1/borsa/hisseyuzeysel/SISE"),
+                eq(HttpMethod.GET), any(HttpEntity.class),
                 eq(BigParaResponse.class)))
-                .thenReturn(validResponse);
+                .thenReturn(new ResponseEntity<>(validResponse,
+                        HttpStatus.OK));
 
         List<StockPriceData> result = bigParaProvider
                 .fetchPrices(List.of(stock1, stock2));

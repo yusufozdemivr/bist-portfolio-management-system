@@ -16,7 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Component
-@Primary
 @RequiredArgsConstructor
 @Slf4j
 public class YahooFinanceProvider implements StockDataProvider {

@@ -44,6 +44,12 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.BAD_REQUEST, message);
     }
 
+    @ExceptionHandler(StockNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleStockNotFound(
+            StockNotFoundException ex) {
+        return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
     private ResponseEntity<Map<String, Object>> buildResponse(
             HttpStatus status, String message) {
         Map<String, Object> body = new HashMap<>();
