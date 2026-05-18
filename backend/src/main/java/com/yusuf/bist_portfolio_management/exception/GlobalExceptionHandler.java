@@ -50,6 +50,24 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
     }
 
+    @ExceptionHandler(InsufficientBalanceException.class)
+    public ResponseEntity<Map<String, Object>> handleInsufficientBalance(
+            InsufficientBalanceException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(InsufficientPositionException.class)
+    public ResponseEntity<Map<String, Object>> handleInsufficientPosition(
+            InsufficientPositionException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidOrderException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidOrder(
+            InvalidOrderException ex) {
+        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
     private ResponseEntity<Map<String, Object>> buildResponse(
             HttpStatus status, String message) {
         Map<String, Object> body = new HashMap<>();

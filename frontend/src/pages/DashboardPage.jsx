@@ -92,6 +92,12 @@ export default function DashboardPage() {
                         </svg>
                     </div>
                     <span style={styles.navTitle}>BIST Portfolio</span>
+                    <div style={styles.navLinks}>
+                        <button style={styles.navLinkActive}>Dashboard</button>
+                        <button onClick={() => navigate('/orders')} style={styles.navLink}>
+                            Orders
+                        </button>
+                    </div>
                 </div>
                 <div style={styles.navRight}>
                     <div style={styles.userChip}>
@@ -222,6 +228,31 @@ const styles = {
         fontSize: '16px',
         fontWeight: '700',
         letterSpacing: '-0.3px',
+        marginRight: '20px',
+    },
+    navLinks: {
+        display: 'flex',
+        gap: '4px',
+    },
+    navLink: {
+        padding: '6px 14px',
+        backgroundColor: 'transparent',
+        color: 'rgba(255,255,255,0.6)',
+        border: 'none',
+        borderRadius: '6px',
+        cursor: 'pointer',
+        fontSize: '13px',
+        fontWeight: '500',
+    },
+    navLinkActive: {
+        padding: '6px 14px',
+        backgroundColor: 'rgba(74,158,255,0.15)',
+        color: '#4a9eff',
+        border: 'none',
+        borderRadius: '6px',
+        cursor: 'default',
+        fontSize: '13px',
+        fontWeight: '600',
     },
     navRight: {
         display: 'flex',
