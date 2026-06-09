@@ -2,12 +2,14 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { fetchAllStocks } from '../api/stockApi';
+import { fetchSummary } from '../api/portfolioApi';
 
 export default function DashboardPage() {
     const { username, token, logout } = useAuth();
     const navigate = useNavigate();
 
     const [stocks, setStocks] = useState([]);
+    const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -20,21 +22,31 @@ export default function DashboardPage() {
                 setLoading(true);
                 setError(null);
                 const data = await fetchAllStocks(token);
-                if (!cancelled) {
-                    setStocks(data);
-                }
+                if (!cancelled) setStocks(data);
             } catch (err) {
-                if (!cancelled) {
-                    setError(err.message);
-                }
+                if (!cancelled) setError(err.message);
             } finally {
-                if (!cancelled) {
-                    setLoading(false);
-                }
+                if (!cancelled) setLoading(false);
             }
         }
 
         loadStocks();
+        return () => { cancelled = true; };
+    }, [token]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadSummary() {
+            try {
+                const data = await fetchSummary(token);
+                if (!cancelled) setSummary(data);
+            } catch {
+                // Özet yüklenemezse kartlar "—" gösterir, sayfa çalışmaya devam eder
+            }
+        }
+
+        loadSummary();
         return () => { cancelled = true; };
     }, [token]);
 
@@ -48,6 +60,16 @@ export default function DashboardPage() {
                 (s.sector && s.sector.toLowerCase().includes(term))
         );
     }, [stocks, searchTerm]);
+
+    const movers = useMemo(() => {
+        const withChange = stocks.filter((s) => s.changePercentage != null);
+        const sorted = [...withChange].sort(
+            (a, b) => Number(b.changePercentage) - Number(a.changePercentage)
+        );
+        const gainers = sorted.slice(0, 3);
+        const losers = sorted.slice(-3).reverse();
+        return { gainers, losers };
+    }, [stocks]);
 
     const handleLogout = () => {
         logout();
@@ -64,12 +86,8 @@ export default function DashboardPage() {
 
     const formatVolume = (volume) => {
         if (volume == null) return '—';
-        if (volume >= 1_000_000) {
-            return `${(volume / 1_000_000).toFixed(1)}M`;
-        }
-        if (volume >= 1_000) {
-            return `${(volume / 1_000).toFixed(1)}K`;
-        }
+        if (volume >= 1_000_000) return `${(volume / 1_000_000).toFixed(1)}M`;
+        if (volume >= 1_000) return `${(volume / 1_000).toFixed(1)}K`;
         return volume.toLocaleString('tr-TR');
     };
 
@@ -80,6 +98,19 @@ export default function DashboardPage() {
         const color = num > 0 ? '#16a34a' : num < 0 ? '#dc2626' : '#6b7280';
         return { text: `${sign}${num.toFixed(2)}%`, color };
     };
+
+    const formatSignedPrice = (v) => {
+        if (v == null) return { text: '—', color: '#111827' };
+        const n = Number(v);
+        const sign = n > 0 ? '+' : n < 0 ? '-' : '';
+        const abs = Math.abs(n).toLocaleString('tr-TR', {
+            minimumFractionDigits: 2, maximumFractionDigits: 2,
+        });
+        const color = n > 0 ? '#16a34a' : n < 0 ? '#dc2626' : '#111827';
+        return { text: `${sign}₺${abs}`, color };
+    };
+
+    const dailyPnl = formatSignedPrice(summary?.dailyChange);
 
     return (
         <div style={styles.container}>
@@ -97,6 +128,9 @@ export default function DashboardPage() {
                         <button onClick={() => navigate('/orders')} style={styles.navLink}>
                             Orders
                         </button>
+                        <button onClick={() => navigate('/portfolio')} style={styles.navLink}>
+                            Portfolio
+                        </button>
                     </div>
                 </div>
                 <div style={styles.navRight}>
@@ -112,8 +146,72 @@ export default function DashboardPage() {
             <main style={styles.main}>
                 <section style={styles.hero}>
                     <h1 style={styles.heroTitle}>Welcome back, {username}</h1>
-                    <p style={styles.heroSub}>BIST100 live stock prices</p>
+                    <p style={styles.heroSub}>Your account overview and BIST100 live prices</p>
                 </section>
+
+                {/* ── Summary Cards ── */}
+                <section style={styles.cardsGrid}>
+                    <div style={styles.card}>
+                        <span style={styles.cardLabel}>Portfolio Value</span>
+                        <span style={styles.cardValue}>
+                            {formatPrice(summary?.totalPortfolioValue)}
+                        </span>
+                    </div>
+                    <div style={styles.card}>
+                        <span style={styles.cardLabel}>Daily P&amp;L</span>
+                        <span style={{ ...styles.cardValue, color: dailyPnl.color }}>
+                            {dailyPnl.text}
+                        </span>
+                    </div>
+                    <div style={styles.card}>
+                        <span style={styles.cardLabel}>Cash Balance</span>
+                        <span style={styles.cardValue}>
+                            {formatPrice(summary?.cashBalance)}
+                        </span>
+                    </div>
+                    <div style={styles.card}>
+                        <span style={styles.cardLabel}>Total Positions</span>
+                        <span style={styles.cardValue}>
+                            {summary?.positionCount ?? '—'}
+                        </span>
+                    </div>
+                </section>
+
+                {/* ── Market Movers ── */}
+                {!loading && !error && (movers.gainers.length > 0 || movers.losers.length > 0) && (
+                    <section style={styles.moversGrid}>
+                        <div style={styles.moverColumn}>
+                            <h3 style={styles.moverTitle}>Top Gainers</h3>
+                            {movers.gainers.map((s) => {
+                                const ch = formatChange(s.changePercentage);
+                                return (
+                                    <div key={s.symbol} style={styles.moverRow}>
+                                        <span style={styles.moverSymbol}>{s.symbol}</span>
+                                        <span style={styles.moverPrice}>{formatPrice(s.lastPrice)}</span>
+                                        <span style={{ ...styles.moverChange, color: ch.color }}>
+                                            {ch.text}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        <div style={styles.moverColumn}>
+                            <h3 style={styles.moverTitle}>Top Losers</h3>
+                            {movers.losers.map((s) => {
+                                const ch = formatChange(s.changePercentage);
+                                return (
+                                    <div key={s.symbol} style={styles.moverRow}>
+                                        <span style={styles.moverSymbol}>{s.symbol}</span>
+                                        <span style={styles.moverPrice}>{formatPrice(s.lastPrice)}</span>
+                                        <span style={{ ...styles.moverChange, color: ch.color }}>
+                                            {ch.text}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </section>
+                )}
 
                 <div style={styles.searchContainer}>
                     <input
@@ -201,201 +299,110 @@ export default function DashboardPage() {
 }
 
 const styles = {
-    container: {
-        minHeight: '100vh',
-        backgroundColor: '#f3f4f6',
-    },
+    container: { minHeight: '100vh', backgroundColor: '#f3f4f6' },
     nav: {
         height: '56px',
         background: 'linear-gradient(135deg, #0a1628, #122244)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 28px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 28px', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
     },
-    navLeft: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '10px',
-    },
-    navLogo: {
-        display: 'flex',
-        alignItems: 'center',
-    },
+    navLeft: { display: 'flex', alignItems: 'center', gap: '10px' },
+    navLogo: { display: 'flex', alignItems: 'center' },
     navTitle: {
-        color: '#ffffff',
-        fontSize: '16px',
-        fontWeight: '700',
-        letterSpacing: '-0.3px',
-        marginRight: '20px',
+        color: '#ffffff', fontSize: '16px', fontWeight: '700',
+        letterSpacing: '-0.3px', marginRight: '20px',
     },
-    navLinks: {
-        display: 'flex',
-        gap: '4px',
-    },
+    navLinks: { display: 'flex', gap: '4px' },
     navLink: {
-        padding: '6px 14px',
-        backgroundColor: 'transparent',
-        color: 'rgba(255,255,255,0.6)',
-        border: 'none',
-        borderRadius: '6px',
-        cursor: 'pointer',
-        fontSize: '13px',
-        fontWeight: '500',
+        padding: '6px 14px', backgroundColor: 'transparent',
+        color: 'rgba(255,255,255,0.6)', border: 'none', borderRadius: '6px',
+        cursor: 'pointer', fontSize: '13px', fontWeight: '500',
     },
     navLinkActive: {
-        padding: '6px 14px',
-        backgroundColor: 'rgba(74,158,255,0.15)',
-        color: '#4a9eff',
-        border: 'none',
-        borderRadius: '6px',
-        cursor: 'default',
-        fontSize: '13px',
-        fontWeight: '600',
+        padding: '6px 14px', backgroundColor: 'rgba(74,158,255,0.15)',
+        color: '#4a9eff', border: 'none', borderRadius: '6px',
+        cursor: 'default', fontSize: '13px', fontWeight: '600',
     },
-    navRight: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '14px',
-    },
-    userChip: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-    },
+    navRight: { display: 'flex', alignItems: 'center', gap: '14px' },
+    userChip: { display: 'flex', alignItems: 'center', gap: '8px' },
     avatar: {
-        width: '30px',
-        height: '30px',
-        borderRadius: '50%',
-        backgroundColor: 'rgba(74,158,255,0.2)',
-        color: '#4a9eff',
-        fontSize: '13px',
-        fontWeight: '600',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        width: '30px', height: '30px', borderRadius: '50%',
+        backgroundColor: 'rgba(74,158,255,0.2)', color: '#4a9eff',
+        fontSize: '13px', fontWeight: '600',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
     },
-    navUsername: {
-        color: 'rgba(255,255,255,0.75)',
-        fontSize: '13px',
-    },
-    navDivider: {
-        width: '1px',
-        height: '20px',
-        backgroundColor: 'rgba(255,255,255,0.15)',
-    },
+    navUsername: { color: 'rgba(255,255,255,0.75)', fontSize: '13px' },
+    navDivider: { width: '1px', height: '20px', backgroundColor: 'rgba(255,255,255,0.15)' },
     logoutBtn: {
-        padding: '6px 14px',
-        backgroundColor: 'transparent',
-        color: 'rgba(255,255,255,0.6)',
-        border: '1px solid rgba(255,255,255,0.15)',
-        borderRadius: '6px',
-        cursor: 'pointer',
-        fontSize: '12px',
-        fontWeight: '500',
+        padding: '6px 14px', backgroundColor: 'transparent',
+        color: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.15)',
+        borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: '500',
     },
-    main: {
-        maxWidth: '1200px',
-        margin: '0 auto',
-        padding: '32px 28px',
+    main: { maxWidth: '1200px', margin: '0 auto', padding: '32px 28px' },
+    hero: { marginBottom: '24px' },
+    heroTitle: { fontSize: '24px', fontWeight: '700', color: '#111827', marginBottom: '4px' },
+    heroSub: { fontSize: '14px', color: '#6b7280' },
+    cardsGrid: {
+        display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: '16px', marginBottom: '24px',
     },
-    hero: {
-        marginBottom: '24px',
+    card: {
+        backgroundColor: '#ffffff', borderRadius: '10px', padding: '18px 20px',
+        border: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', gap: '8px',
     },
-    heroTitle: {
-        fontSize: '24px',
-        fontWeight: '700',
-        color: '#111827',
-        marginBottom: '4px',
+    cardLabel: {
+        fontSize: '11px', color: '#6b7280', textTransform: 'uppercase',
+        letterSpacing: '0.5px', fontWeight: '600',
     },
-    heroSub: {
-        fontSize: '14px',
-        color: '#6b7280',
+    cardValue: { fontSize: '22px', fontWeight: '700', color: '#111827' },
+    moversGrid: {
+        display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: '16px', marginBottom: '24px',
     },
-    searchContainer: {
-        marginBottom: '20px',
+    moverColumn: {
+        backgroundColor: '#ffffff', borderRadius: '10px',
+        padding: '18px 20px', border: '1px solid #f0f0f0',
     },
+    moverTitle: {
+        fontSize: '12px', color: '#6b7280', textTransform: 'uppercase',
+        letterSpacing: '0.5px', fontWeight: '700', marginBottom: '12px',
+    },
+    moverRow: {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '8px 0', borderBottom: '1px solid #f5f5f5',
+    },
+    moverSymbol: { fontSize: '13px', fontWeight: '700', color: '#111827', flex: '1' },
+    moverPrice: { fontSize: '13px', color: '#374151', flex: '1', textAlign: 'right' },
+    moverChange: { fontSize: '13px', fontWeight: '600', flex: '1', textAlign: 'right' },
+    searchContainer: { marginBottom: '20px' },
     searchInput: {
-        width: '100%',
-        maxWidth: '400px',
-        padding: '10px 16px',
-        fontSize: '14px',
-        border: '1px solid #d1d5db',
-        borderRadius: '8px',
-        outline: 'none',
-        backgroundColor: '#ffffff',
-        boxSizing: 'border-box',
+        width: '100%', maxWidth: '400px', padding: '10px 16px', fontSize: '14px',
+        border: '1px solid #d1d5db', borderRadius: '8px', outline: 'none',
+        backgroundColor: '#ffffff', boxSizing: 'border-box',
     },
     statusBox: {
-        backgroundColor: '#ffffff',
-        borderRadius: '10px',
-        padding: '48px 32px',
-        textAlign: 'center',
-        border: '1px solid #f0f0f0',
+        backgroundColor: '#ffffff', borderRadius: '10px', padding: '48px 32px',
+        textAlign: 'center', border: '1px solid #f0f0f0',
     },
-    statusText: {
-        fontSize: '15px',
-        color: '#6b7280',
-    },
+    statusText: { fontSize: '15px', color: '#6b7280' },
     errorBox: {
-        backgroundColor: '#fef2f2',
-        borderRadius: '10px',
-        padding: '16px 24px',
-        border: '1px solid #fecaca',
+        backgroundColor: '#fef2f2', borderRadius: '10px',
+        padding: '16px 24px', border: '1px solid #fecaca',
     },
-    errorText: {
-        fontSize: '14px',
-        color: '#dc2626',
-    },
+    errorText: { fontSize: '14px', color: '#dc2626' },
     tableWrapper: {
-        backgroundColor: '#ffffff',
-        borderRadius: '10px',
-        border: '1px solid #f0f0f0',
-        overflow: 'hidden',
-        overflowX: 'auto',
+        backgroundColor: '#ffffff', borderRadius: '10px',
+        border: '1px solid #f0f0f0', overflow: 'hidden', overflowX: 'auto',
     },
-    table: {
-        width: '100%',
-        borderCollapse: 'collapse',
-        fontSize: '13px',
-    },
+    table: { width: '100%', borderCollapse: 'collapse', fontSize: '13px' },
     th: {
-        padding: '12px 16px',
-        textAlign: 'left',
-        fontWeight: '600',
-        fontSize: '11px',
-        color: '#6b7280',
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
-        borderBottom: '1px solid #f0f0f0',
-        backgroundColor: '#fafafa',
-        whiteSpace: 'nowrap',
+        padding: '12px 16px', textAlign: 'left', fontWeight: '600', fontSize: '11px',
+        color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px',
+        borderBottom: '1px solid #f0f0f0', backgroundColor: '#fafafa', whiteSpace: 'nowrap',
     },
-    tr: {
-        borderBottom: '1px solid #f5f5f5',
-    },
-    td: {
-        padding: '10px 16px',
-        color: '#374151',
-        whiteSpace: 'nowrap',
-    },
-    tdSymbol: {
-        padding: '10px 16px',
-        color: '#111827',
-        fontWeight: '700',
-        whiteSpace: 'nowrap',
-    },
-    tdSector: {
-        padding: '10px 16px',
-        color: '#9ca3af',
-        fontSize: '12px',
-        whiteSpace: 'nowrap',
-    },
-    emptyRow: {
-        padding: '32px 16px',
-        textAlign: 'center',
-        color: '#9ca3af',
-        fontSize: '14px',
-    },
+    tr: { borderBottom: '1px solid #f5f5f5' },
+    td: { padding: '10px 16px', color: '#374151', whiteSpace: 'nowrap' },
+    tdSymbol: { padding: '10px 16px', color: '#111827', fontWeight: '700', whiteSpace: 'nowrap' },
+    tdSector: { padding: '10px 16px', color: '#9ca3af', fontSize: '12px', whiteSpace: 'nowrap' },
+    emptyRow: { padding: '32px 16px', textAlign: 'center', color: '#9ca3af', fontSize: '14px' },
 };

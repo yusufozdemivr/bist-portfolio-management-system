@@ -8,7 +8,12 @@ vi.mock('../api/stockApi', () => ({
     fetchAllStocks: vi.fn(),
 }));
 
+vi.mock('../api/portfolioApi', () => ({
+    fetchSummary: vi.fn(),
+}));
+
 import { fetchAllStocks } from '../api/stockApi';
+import { fetchSummary } from '../api/portfolioApi';
 
 function renderDashboard() {
     return render(
@@ -23,6 +28,15 @@ function renderDashboard() {
 describe('DashboardPage', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        fetchSummary.mockResolvedValue({
+            totalPortfolioValue: 100000,
+            totalCostBasis: 0,
+            totalMarketValue: 0,
+            totalUnrealizedPnl: 0,
+            cashBalance: 100000,
+            dailyChange: 0,
+            positionCount: 0,
+        });
     });
 
     it('shows loading state initially', () => {
@@ -48,9 +62,10 @@ describe('DashboardPage', () => {
 
         renderDashboard();
 
-        expect(await screen.findByText('THYAO')).toBeInTheDocument();
-        expect(screen.getByText('Türk Hava Yolları')).toBeInTheDocument();
+        // THYAO hem tabloda hem de Market Movers'ta görünebilir → getAllByText
+        expect(await screen.findByText('Türk Hava Yolları')).toBeInTheDocument();
         expect(screen.getByText('Havacılık')).toBeInTheDocument();
+        expect(screen.getAllByText('THYAO').length).toBeGreaterThan(0);
     });
 
     it('renders search input', () => {

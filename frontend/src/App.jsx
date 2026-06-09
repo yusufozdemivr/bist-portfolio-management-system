@@ -3,6 +3,7 @@ import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import DashboardPage from './pages/DashboardPage';
 import OrderPage from './pages/OrderPage';
+import PortfolioPage from './pages/PortfolioPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 export default function App() {
@@ -24,6 +25,14 @@ export default function App() {
                     element={
                         <ProtectedRoute>
                             <OrderPage />
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/portfolio"
+                    element={
+                        <ProtectedRoute>
+                            <PortfolioPage />
                         </ProtectedRoute>
                     }
                 />

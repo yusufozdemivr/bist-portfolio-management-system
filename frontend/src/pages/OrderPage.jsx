@@ -158,10 +158,13 @@ export default function OrderPage() {
                     </div>
                     <span style={styles.navTitle}>BIST Portfolio</span>
                     <div style={styles.navLinks}>
-                        <button onClick={() => navigate('/dashboard')} style={styles.navLink}>
+                       <button onClick={() => navigate('/dashboard')} style={styles.navLink}>
                             Dashboard
                         </button>
                         <button style={styles.navLinkActive}>Orders</button>
+                        <button onClick={() => navigate('/portfolio')} style={styles.navLink}>
+                            Portfolio
+                        </button>
                     </div>
                 </div>
                 <div style={styles.navRight}>
